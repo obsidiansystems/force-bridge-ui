@@ -4,7 +4,7 @@ import { createContainer } from 'unstated-next';
 import { WalletContainer, WalletState } from './WalletContainer';
 import { fromEnv, Version } from './version';
 
-const SUPPORTED_NETWORKS = ['Ethereum', 'Bsc'];
+const SUPPORTED_NETWORKS = ['Ethereum', 'Bsc', 'Cardano'];
 
 export enum BridgeDirection {
   // bridge in to nervos
@@ -45,17 +45,20 @@ export const ForceBridgeContainer = createContainer<ForceBridgeState>(() => {
   const [network, switchNetwork] = useState<string>('Ethereum');
   const [direction, setDirection] = useState<BridgeDirection>(BridgeDirection.In);
 
-  const api = useMemo<API.ForceBridgeAPIV1>(
-    () =>
-      network === 'Ethereum'
-        ? new ForceBridgeAPIV1Handler(process.env.REACT_APP_BRIDGE_RPC_URL)
-        : new ForceBridgeAPIV1Handler(process.env.REACT_APP_BRIDGE_BSC_RPC_URL),
-    [network],
-  );
+  const api = useMemo<API.ForceBridgeAPIV1>(() => {
+    switch (network) {
+      case 'Ethereum':
+        return new ForceBridgeAPIV1Handler(process.env.REACT_APP_BRIDGE_RPC_URL);
+      case 'Bsc':
+        return new ForceBridgeAPIV1Handler(process.env.REACT_APP_BRIDGE_BSC_RPC_URL);
+      case 'Cardano':
+        return new ForceBridgeAPIV1Handler(process.env.REACT_APP_BRIDGE_RPC_URL);
+    }
+  }, [network]);
 
   // TODO replace with ModuleRegistry
   const xchainModule = useMemo<Module>(() => {
-    if (network === 'Ethereum' || network === 'Bsc') return eth.module as Module;
+    if (network === 'Ethereum' || network === 'Bsc' || network === 'Cardano') return eth.module as Module;
     throw new Error('unknown network');
   }, [network]);
 
