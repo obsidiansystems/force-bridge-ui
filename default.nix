@@ -35,36 +35,39 @@ let
     let
       text = builtins.readFile (./. + "/.prettierrc");
     in
-    pkgs.writeText ".prettierrc" text;
+      pkgs.writeText ".prettierrc" text;
+
+  global-package =
+    let
+      text = builtins.readFile (./. + "/package.json");
+    in
+      pkgs.writeText "package.json" text;
 
   build = mkYarnPackage rec {
     name = "force-bridge-ui-production";
-    src = ./apps/ui;
+    src = ./.;
     yarnLock = ./yarn.lock;
 
-    workspaceDependencies = [ force-bridge-package force-bridge.force-bridge-commons ];
+    workspaceDependencies = [ force-bridge-package force-bridge.force-bridge-commons force-bridge.force-bridge-ui ];
 
     installPhase = ''
       runHook preInstall
 
-      # We need this file
-      cp ${tsconfig-build} deps/tsconfig.build.json
+      rm .yarnrc
 
-      # Our files for this package live here
-      cd deps/@force-bridge/ui
+      ls -l deps/
 
-      # We need the global prettier rules
+      cp -r ${src}/* .
+      chmod -R +w .
+
+      yarn build:lib
+
+      cp -r packages/commons/lib deps/@force-bridge/commons/
+
+      cd apps/ui
       cp ${prettierrc} .prettierrc
-
-      # Relink node_modules to have write access for caching (.cache)
-      rm node_modules
-      ln -s ../../../node_modules node_modules
-
-      # global eslint file included and relinked
       cp ${workspace-eslintrc} .global-eslintrc.js
       sed -i 's+../../.eslintrc.js+./.global-eslintrc.js+' ./.eslintrc.js
-
-      # Build (without version) TODO version
       yarn build-no-version --offline
 
       mkdir -p $out
@@ -73,12 +76,7 @@ let
       runHook postInstall
     '';
 
-    # doDist doesn't work you have to do distPhase = true
-    # TODO(skylar): Do we want a distPhase?
-    # doDist = false;
-    distPhase = ''
-    true
-    '';
+    distPhase = ''true'';
   };
 in
 {
