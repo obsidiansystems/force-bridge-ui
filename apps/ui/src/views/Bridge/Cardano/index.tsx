@@ -1,12 +1,12 @@
 import { createContainer } from 'unstated-next';
 import { useMutation, UseMutationResult, mutateAsync } from 'react-query';
 import Icon from '@ant-design/icons';
+import { utils } from '@force-bridge/commons';
 import { AssetSymbol } from 'components/AssetSymbol';
 import { ReactComponent as BridgeDirectionIcon } from '../Ethereum/BridgeOperation/resources/icon-bridge-direction.svg';
 import { BridgeReminder } from '../Ethereum/BridgeOperation/BridgeReminder';
 import React, { useMemo, useEffect, useState } from 'react';
 import { BridgeOperationForm } from '../Ethereum/BridgeOperation';
-import { useChainId } from '../Ethereum/hooks/useChainId';
 import { ForceBridgeContainer, BridgeDirection } from 'containers/ForceBridgeContainer';
 import { BridgeHistory } from 'views/Bridge/components/BridgeHistory';
 import { useSelectBridgeAsset } from 'views/Bridge/hooks/useSelectBridgeAsset';
@@ -51,7 +51,8 @@ const Help: React.FC<{ validateStatus: 'error' | ''; help?: string }> = ({ valid
 };
 
 export const CardanoProviderContainer = createContainer(() => {
-  const cardano = window.cardano
+  const [namiApi, setNamiApi] = useState();
+  const [chainId, setChainId] = useState<number | null>(null);
 
   if (!window.cardano) {
     Modal.warning({
@@ -68,7 +69,21 @@ export const CardanoProviderContainer = createContainer(() => {
     throw new Error('Nami Wallet is required');
   }
 
-  return cardano;
+  async function updateNamiApi() {
+    const namiToSet = await window.cardano.nami.enable();
+    setNamiApi(namiToSet);
+  }
+
+  useMemo(() => {
+    updateNamiApi();
+  }, [])
+
+  return {
+    namiApi,
+    chainId,
+    setChainId,
+    refetchNamiApi: updateNamiApi,
+  };
 });
 
 
@@ -132,7 +147,6 @@ const CardanoBridge: React.FC = () => {
       // TODO: user has to click Connect button twice when initially giving access to Nami wallet
       nami.isEnabled().then((isNamiEnabled) => {
         if (!isNamiEnabled) {
-          console.log('requesting to enable nami');
           nami.enable();
         } else {
           setNamiWalletConnectStatus('Connected');
@@ -155,12 +169,13 @@ const CardanoBridge: React.FC = () => {
   }
 
   function useSwitchNamiNetwork(): UseMutationResult<void, unknown, SwitchInputValues> {
-    const provider = CardanoProviderContainer.useContainer();
+    const { refetchNamiApi, namiApi, setChainId, chainId } = CardanoProviderContainer.useContainer();
 
     return useMutation(
       ['switchNamiNetwork'],
-      async () => {
-          await provider.nami.enable();
+      async (input: SwitchInputValues) => {
+        setChainId(input.chainId);
+        refetchNamiApi();
       },
       {
         onError(error) {
@@ -192,32 +207,35 @@ const CardanoBridge: React.FC = () => {
   };
 
   function useChainId(): number | null {
-    const [chainId, setChainId] = useState<number | null>(null);
-    const provider = CardanoProviderContainer.useContainer();
+    const { namiApi: provider, chainId, setChainId } = CardanoProviderContainer.useContainer();
 
     useEffect(() => {
-      provider.getNetworkId().then((newChainId) => setChainId(newChainId));
-    }, [provider]);
+      function chainIdListener(changedChainId: unknown) {
+        const chainId = Number(changedChainId);
+        if (isNaN(chainId)) return;
+        setChainId(chainId);
+      }
+      if (provider) {
+        console.log(provider);
+        provider.getNetworkId().then((newChainId) => setChainId(newChainId));
 
+        provider.experimental.on('networkChange', chainIdListener);
+      }
+    }, [provider]);
     return chainId;
   }
 
-/*const namiChainId = useChainId();
-  const bridgeChainId =
-    network === 'Cardano'
-    ? {
-      chainId:
-    }
-    : {
+  const namiChainId = useChainId();
+  const bridgeChainInfo =
+    {
+      chainId: Number(process.env.REACT_APP_CARDANO_ENABLE_CHAIN_ID),
+      chainName: process.env.REACT_APP_CARDANO_ENABLE_CHAIN_NAME,
     };
 
   const actionButton =
-    namiChainId !== null && namiChainId !== bridgeChainInfo.chainId ? (
-      <SwitchNamiNetworkButton
-        chainId={`0x${bridgeChainInfo.chainId.toString(16)}`}
-        chainName={bridgeChainInfo.chainName}
-      />
-    ) : null /* (
+    namiChainId !== null && namiChainId !== bridgeChainInfo.chainId ?
+      <div>Please switch your nami network (Mainnet or Testnet) </div>
+     : <div>You are Connected</div> /* (
       <SubmitButton
         disabled={validateStatus !== 'success' && !enableApproveButton}
         block
@@ -313,7 +331,7 @@ const CardanoBridge: React.FC = () => {
         />
       </div>
 
-
+      {actionButton}
 
       <BridgeReminder />
     </BridgeViewWrapper>
