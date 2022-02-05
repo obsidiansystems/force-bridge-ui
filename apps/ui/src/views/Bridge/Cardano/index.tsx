@@ -50,9 +50,22 @@ const Help: React.FC<{ validateStatus: 'error' | ''; help?: string }> = ({ valid
   return <HelpWrapper type="danger">{help}</HelpWrapper>;
 };
 
+
+function retrySync(retry: () => boolean, options: { times: number; interval: number }): void {
+  if (!options.times || retry()) return;
+  setTimeout(() => {
+    retrySync(retry, { times: options.times - 1, interval: options.interval });
+  }, options.interval);
+}
+
 export const CardanoProviderContainer = createContainer(() => {
   const [namiApi, setNamiApi] = useState();
   const [chainId, setChainId] = useState<number | null>(null);
+  const [namiWalletConnectStatus, setNamiWalletConnectStatus] = useState<ConnectStatus>(() => {
+    return 'Disconnected'
+  });
+
+  const [namiAddr, setNamiAddr] = useState(() => '')
 
   if (!window.cardano) {
     Modal.warning({
@@ -69,38 +82,69 @@ export const CardanoProviderContainer = createContainer(() => {
     throw new Error('Nami Wallet is required');
   }
 
-  async function updateNamiApi() {
-    const namiToSet = await window.cardano.nami.enable();
-    setNamiApi(namiToSet);
+  function updateNamiApi() {
+    window.cardano.nami.enable().then((namiToSet) => {
+
+      setNamiApi(namiToSet);
+      //console.log(namiApi);
+      if (!namiApi) throw new Error('Nami Wallet is required');
+
+      namiApi.experimental.on('accountChange', (addr) => setNamiAddr);
+
+      retrySync(
+        () => {
+          if (namiAddr == '') return false;
+
+          setNamiWalletConnectStatus('Connected');
+          return true
+        },
+        { times: 5, interval: 100 },
+      );
+    }).catch((e) => {console.log(e)});
   }
 
-  useMemo(() => {
-    updateNamiApi();
-  }, [])
+  //useMemo(() => {
+    //updateNamiApi();
+  //}, [])
 
   return {
     namiApi,
     chainId,
     setChainId,
-    refetchNamiApi: updateNamiApi,
+    updateNamiApi,
+    namiWalletConnectStatus,
+    setNamiWalletConnectStatus,
+    namiAddr,
+    setNamiAddr,
   };
 });
 
+function useChainId(): number | null {
+  const { namiApi: provider, chainId, setChainId } = CardanoProviderContainer.useContainer();
+
+  useEffect(() => {
+    function chainIdListener(changedChainId: unknown) {
+      const chainId = Number(changedChainId);
+      if (isNaN(chainId)) return;
+      setChainId(chainId);
+    }
+    if (provider) {
+      provider.getNetworkId().then((newChainId) => setChainId(newChainId));
+
+      provider.experimental.on('networkChange', chainIdListener);
+    }
+  }, [provider]);
+  return chainId;
+}
 
 const CardanoBridge: React.FC = () => {
-  const chainId = useChainId();
   const { selectedAsset } = useSelectBridgeAsset();
-  const { direction, network, switchBridgeDirection } = ForceBridgeContainer.useContainer();
-  const [confirmNumberConfig, setConfirmNumberConfig] = useState<{
-    xchainConfirmNumber: number;
-    nervosConfirmNumber: number;
-  }>();
+  const { direction, network } = ForceBridgeContainer.useContainer();
+  const { updateNamiApi, namiWalletConnectStatus, setNamiWalletConnectStatus, namiAddr, setNamiAddr, chainId, namiApi } = CardanoProviderContainer.useContainer();
 
-  const [namiWalletConnectStatus, setNamiWalletConnectStatus] = useState<ConnectStatus>(() => {
-    return 'Disconnected'
-  });
-
-  const [namiAddr, setNamiAddr] = useState(() => '')
+  useEffect(() => {
+    updateNamiApi();
+  }, [namiApi, chainId]);
 
   const DisconnectedView = () => (
     <StyledWalletConnectButton block onClick={connectToNami}>
@@ -169,13 +213,12 @@ const CardanoBridge: React.FC = () => {
   }
 
   function useSwitchNamiNetwork(): UseMutationResult<void, unknown, SwitchInputValues> {
-    const { refetchNamiApi, namiApi, setChainId, chainId } = CardanoProviderContainer.useContainer();
+    const { namiApi, setChainId, chainId } = CardanoProviderContainer.useContainer();
 
     return useMutation(
       ['switchNamiNetwork'],
       async (input: SwitchInputValues) => {
         setChainId(input.chainId);
-        refetchNamiApi();
       },
       {
         onError(error) {
@@ -206,24 +249,47 @@ const CardanoBridge: React.FC = () => {
     );
   };
 
-  function useChainId(): number | null {
-    const { namiApi: provider, chainId, setChainId } = CardanoProviderContainer.useContainer();
-
-    useEffect(() => {
-      function chainIdListener(changedChainId: unknown) {
-        const chainId = Number(changedChainId);
-        if (isNaN(chainId)) return;
-        setChainId(chainId);
-      }
-      if (provider) {
-        console.log(provider);
-        provider.getNetworkId().then((newChainId) => setChainId(newChainId));
-
-        provider.experimental.on('networkChange', chainIdListener);
-      }
-    }, [provider]);
-    return chainId;
+  interface SubmitButtonProps extends ButtonProps {
+    isloading: boolean;
+    allowanceStatus: AllowanceState | undefined;
   }
+
+  const SubmitButton: React.FC<SubmitButtonProps> = (props) => {
+    const { isloading, allowanceStatus, ...buttonProps } = props;
+    if (!allowanceStatus) {
+      return (
+        <Button loading={isloading} {...buttonProps}>
+          Bridge
+        </Button>
+      );
+    }
+
+    let isLoading = false;
+    let content;
+    if (allowanceStatus.status === 'Querying' || allowanceStatus.status === 'Approving' || isloading) {
+      isLoading = true;
+    }
+    switch (allowanceStatus.status) {
+      case 'NeedApprove':
+        content = 'Approve';
+        break;
+      case 'Approving':
+        content = 'Approving';
+        break;
+      case 'Approved':
+        content = 'Bridge';
+        break;
+      default:
+        content = ' ';
+    }
+
+    return (
+      <Button loading={isLoading} {...buttonProps}>
+        {content}
+      </Button>
+    );
+  };
+
 
   const namiChainId = useChainId();
   const bridgeChainInfo =
@@ -235,9 +301,9 @@ const CardanoBridge: React.FC = () => {
   const actionButton =
     namiChainId !== null && namiChainId !== bridgeChainInfo.chainId ?
       <div>Please switch your nami network (Mainnet or Testnet) </div>
-     : <div>You are Connected</div> /* (
+     : <div> Connected to Testnet </div> /*(
       <SubmitButton
-        disabled={validateStatus !== 'success' && !enableApproveButton}
+        disabled={validateStatus !== 'success' && !zenableApproveButton}
         block
         type="primary"
         size="large"
@@ -245,8 +311,7 @@ const CardanoBridge: React.FC = () => {
         allowanceStatus={allowance}
         isloading={isLoading}
       />
-    );
-*/
+    );*/
 
   return (
     <BridgeViewWrapper>
