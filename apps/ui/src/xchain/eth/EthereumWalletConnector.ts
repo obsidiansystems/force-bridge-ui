@@ -1,5 +1,5 @@
 import { EthereumNetwork } from '@force-bridge/commons';
-import { Address, AddressType } from '@lay2/pw-core';
+import { Address, AddressType } from 'fb-pw-core';
 import detectEthereumProvider from '@metamask/detect-provider';
 import { MetaMaskInpageProvider } from '@metamask/inpage-provider';
 import { scriptToAddress } from '@nervosnetwork/ckb-sdk-utils';

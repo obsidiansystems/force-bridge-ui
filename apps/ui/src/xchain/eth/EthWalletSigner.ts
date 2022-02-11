@@ -15,7 +15,7 @@ import PWCore, {
   RawTransaction,
   Script,
   Transaction,
-} from '@lay2/pw-core';
+} from 'fb-pw-core';
 import { RPC, transformers } from 'ckb-js-toolkit';
 import { BigNumber, ethers } from 'ethers';
 import { ConnectorConfig } from './EthereumWalletConnector';

@@ -61,5 +61,17 @@ export type EthereumNetwork = NetworkTypes<{
   SignedTransaction: string;
 }>;
 
+export type CardanoNetwork = NetworkTypes<{
+  Network: 'Cardano';
+  NativeAssetIdent: '0';
+  // address
+  DerivedAssetIdent: string;
+  // address
+  UserIdent: string;
+  RawTransaction: ethers.PopulatedTransaction;
+  // TODO maybe deprecated the SignedTransaction
+  SignedTransaction: string;
+}>;
+
 // export type AllNetworks = NervosNetwork | EthereumNetwork;
 export type XChainNetwork = EthereumNetwork;

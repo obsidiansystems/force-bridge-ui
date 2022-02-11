@@ -8,7 +8,7 @@ import PWCore, {
   OutPoint,
   PwCollector,
   Script,
-} from '@lay2/pw-core';
+} from 'fb-pw-core';
 import React, { useEffect, useState } from 'react';
 import { BridgeOperationForm } from './BridgeOperation';
 import { useChainId } from './hooks/useChainId';
@@ -55,7 +55,7 @@ const EthereumBridge: React.FC = () => {
         ckbChainID: pwChainId,
         contractAddress: config.xchains.Ethereum.contractAddress,
       });
-
+      console.log('setWallet in Bridge/Eth/index')
       setWallet(wallet);
 
       const getDevConfig = () => {
@@ -95,6 +95,7 @@ const EthereumBridge: React.FC = () => {
     });
 
     return () => {
+      console.log('wallet undefined')
       setWallet(undefined);
     };
   }, [api, setWallet, chainId]);

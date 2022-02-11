@@ -22,6 +22,7 @@ import { LinearGradientButton } from 'components/Styled';
 import { UserIdent } from 'components/UserIdent';
 import { useGlobalSetting } from 'hooks/useGlobalSetting';
 import { ConnectStatus } from 'interfaces/WalletConnector';
+import { CardanoProvider } from 'fb-pw-core';
 
 const StyledWalletConnectButton = styled(LinearGradientButton)`
   color: ${(props) => props.theme.palette.common.black};
@@ -50,8 +51,8 @@ const Help: React.FC<{ validateStatus: 'error' | ''; help?: string }> = ({ valid
   return <HelpWrapper type="danger">{help}</HelpWrapper>;
 };
 
-
-function retrySync(retry: () => boolean, options: { times: number; interval: number }): void {
+//TODO: there's two retrySyncs that do the same thing
+export function retrySync(retry: () => boolean, options: { times: number; interval: number }): void {
   if (!options.times || retry()) return;
   setTimeout(() => {
     retrySync(retry, { times: options.times - 1, interval: options.interval });
@@ -62,7 +63,7 @@ export const CardanoProviderContainer = createContainer(() => {
   const [namiApi, setNamiApi] = useState();
   const [chainId, setChainId] = useState<number | null>(null);
   const [namiWalletConnectStatus, setNamiWalletConnectStatus] = useState<ConnectStatus>(() => {
-    return 'Disconnected'
+    return ConnectStatus.Disconnected
   });
 
   const [namiAddr, setNamiAddr] = useState(() => '')
@@ -86,7 +87,6 @@ export const CardanoProviderContainer = createContainer(() => {
     window.cardano.nami.enable().then((namiToSet) => {
 
       setNamiApi(namiToSet);
-      //console.log(namiApi);
       if (!namiApi) throw new Error('Nami Wallet is required');
 
       namiApi.experimental.on('accountChange', (addr) => setNamiAddr);
@@ -95,7 +95,7 @@ export const CardanoProviderContainer = createContainer(() => {
         () => {
           if (namiAddr == '') return false;
 
-          setNamiWalletConnectStatus('Connected');
+          setNamiWalletConnectStatus(ConnectStatus.Connected);
           return true
         },
         { times: 5, interval: 100 },
@@ -193,7 +193,7 @@ const CardanoBridge: React.FC = () => {
         if (!isNamiEnabled) {
           nami.enable();
         } else {
-          setNamiWalletConnectStatus('Connected');
+          setNamiWalletConnectStatus(ConnectStatus.Connected);
         }
       });
     }
@@ -201,6 +201,8 @@ const CardanoBridge: React.FC = () => {
 
   const btn = useMemo(() => {
     if (namiWalletConnectStatus === ConnectStatus.Connected) {
+      const c = new CardanoProvider();
+      console.log(c);
       return (<ConnectedView />);
     } else {
       return (<DisconnectedView />);
